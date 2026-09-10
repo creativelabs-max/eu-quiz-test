@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Map Pin Calibrator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; font-family: system-ui; overflow: hidden; }
+#container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+#map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  cursor: grab;
+  z-index: 10;
+  text-align: center;
+  user-select: none;
+}
+.pin .flag { font-size: 24px; }
+.pin .name {
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0,0,0,0.7);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+#coords {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.85);
+  color: #0f0;
+  padding: 10px 15px;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 100;
+  border-radius: 8px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+#crosshair {
+  position: absolute;
+  width: 20px; height: 20px;
+  border: 2px solid red;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 50;
+  display: none;
+}
+#output {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.9);
+  color: #0f0;
+  padding: 15px;
+  font-family: monospace;
+  font-size: 11px;
+  z-index: 100;
+  border-radius: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  white-space: pre;
+}
+button {
+  background: #0a0;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 10px;
+}
+#toggle {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+}
+</style>
+</head>
+<body>
+<div id="container">
+  <img id="map" src="assets/story/europe_map_light.jpg">
+  <div id="crosshair"></div>
+</div>
+
+<div id="coords">
+  <b>🗺️ Klicke auf die Karte oder ziehe Pins</b><br>
+  <span id="live-coord">x: -, y: -</span><br><br>
+  <div id="pin-list"></div>
+  <br>
+  <button onclick="exportCoords()">📋 Export Koordinaten</button>
+</div>
+
+<button id="toggle" onclick="toggleMap()">🌓 Hell/Dunkel</button>
+
+<div id="output" style="display:none"></div>
+
+<script>
+const countries = [
+  { name: "Belgien", chapter: 1, x: 371, y: 475, flag: "🇧🇪" },
+  { name: "Deutschland", chapter: 1, x: 452, y: 470, flag: "🇩🇪" },
+  { name: "Frankreich", chapter: 1, x: 330, y: 565, flag: "🇫🇷" },
+  { name: "Italien", chapter: 1, x: 478, y: 740, flag: "🇮🇹" },
+  { name: "Luxemburg", chapter: 1, x: 388, y: 505, flag: "🇱🇺" },
+  { name: "Niederlande", chapter: 1, x: 384, y: 435, flag: "🇳🇱" },
+  { name: "Spanien", chapter: 2, x: 300, y: 745, flag: "🇪🇸" },
+  { name: "Portugal", chapter: 2, x: 170, y: 715, flag: "🇵🇹" },
+  { name: "Griechenland", chapter: 2, x: 644, y: 855, flag: "🇬🇷" },
+  { name: "Zypern", chapter: 2, x: 828, y: 950, flag: "🇨🇾" },
+  { name: "Malta", chapter: 2, x: 438, y: 875, flag: "🇲🇹" },
+  { name: "Österreich", chapter: 3, x: 507, y: 580, flag: "🇦🇹" },
+  { name: "Tschechien", chapter: 3, x: 514, y: 510, flag: "🇨🇿" },
+  { name: "Slowakei", chapter: 3, x: 579, y: 510, flag: "🇸🇰" },
+  { name: "Slowenien", chapter: 3, x: 506, y: 628, flag: "🇸🇮" },
+  { name: "Kroatien", chapter: 3, x: 546, y: 632, flag: "🇭🇷" },
+  { name: "Ungarn", chapter: 3, x: 581, y: 590, flag: "🇭🇺" },
+  { name: "Irland", chapter: 4, x: 221, y: 400, flag: "🇮🇪" },
+  { name: "Dänemark", chapter: 4, x: 447, y: 345, flag: "🇩🇰" },
+  { name: "Schweden", chapter: 4, x: 519, y: 235, flag: "🇸🇪" },
+  { name: "Finnland", chapter: 4, x: 632, y: 158, flag: "🇫🇮" },
+  { name: "Estland", chapter: 4, x: 616, y: 280, flag: "🇪🇪" },
+  { name: "Lettland", chapter: 4, x: 618, y: 325, flag: "🇱🇻" },
+  { name: "Litauen", chapter: 4, x: 628, y: 385, flag: "🇱🇹" },
+  { name: "Polen", chapter: 5, x: 574, y: 425, flag: "🇵🇱" },
+  { name: "Rumänien", chapter: 5, x: 660, y: 605, flag: "🇷🇴" },
+  { name: "Bulgarien", chapter: 5, x: 684, y: 715, flag: "🇧🇬" },
+  { name: "Europaparlament", chapter: 5, x: 385, y: 520, flag: "👑" },
+];
+
+const container = document.getElementById('container');
+const liveCoord = document.getElementById('live-coord');
+const pinList = document.getElementById('pin-list');
+let isDark = false;
+let dragging = null;
+
+// Create pins
+countries.forEach((c, i) => {
+  const pin = document.createElement('div');
+  pin.className = 'pin';
+  pin.innerHTML = `<div class="flag">${c.flag}</div><div class="name">${c.name}</div>`;
+  pin.style.left = (c.x / 1000 * 100) + '%';
+  pin.style.top = (c.y / 1000 * 100) + '%';
+  pin.dataset.index = i;
+  
+  pin.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = { pin, index: i };
+    pin.style.cursor = 'grabbing';
+  });
+  
+  container.appendChild(pin);
+  c.pinEl = pin;
+});
+
+document.addEventListener('mousemove', (e) => {
+  const rect = container.getBoundingClientRect();
+  const xPct = (e.clientX - rect.left) / rect.width;
+  const yPct = (e.clientY - rect.top) / rect.height;
+  const x1000 = Math.round(xPct * 1000);
+  const y1000 = Math.round(yPct * 1000);
+  liveCoord.textContent = `x: ${x1000}, y: ${y1000}`;
+  
+  if (dragging) {
+    const c = countries[dragging.index];
+    c.x = x1000;
+    c.y = y1000;
+    dragging.pin.style.left = (xPct * 100) + '%';
+    dragging.pin.style.top = (yPct * 100) + '%';
+    updatePinList();
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (dragging) {
+    dragging.pin.style.cursor = 'grab';
+    dragging = null;
+  }
+});
+
+container.addEventListener('click', (e) => {
+  if (e.target.closest('.pin')) return;
+  const rect = container.getBoundingClientRect();
+  const x1000 = Math.round((e.clientX - rect.left) / rect.width * 1000);
+  const y1000 = Math.round((e.clientY - rect.top) / rect.height * 1000);
+  const ch = document.getElementById('crosshair');
+  ch.style.display = 'block';
+  ch.style.left = (x1000 / 10) + '%';
+  ch.style.top = (y1000 / 10) + '%';
+});
+
+function updatePinList() {
+  pinList.innerHTML = countries.map(c => 
+    `<span style="color:${c.x !== undefined ? '#0f0' : '#f00'}">${c.flag} ${c.name}: x:${c.x}, y:${c.y}</span>`
+  ).join('<br>');
+}
+updatePinList();
+
+function toggleMap() {
+  isDark = !isDark;
+  document.getElementById('map').src = isDark 
+    ? 'assets/story/europe_map.jpg' 
+    : 'assets/story/europe_map_light.jpg';
+}
+
+function exportCoords() {
+  const output = document.getElementById('output');
+  output.style.display = 'block';
+  let code = 'expeditionRoute: [\n';
+  const chapters = {1: 'Gründerstaaten', 2: 'Süden', 3: 'Mitteleuropa', 4: 'Norden', 5: 'Finale'};
+  let lastCh = 0;
+  countries.forEach(c => {
+    if (c.chapter !== lastCh) {
+      code += `  // Kapitel ${c.chapter}\n`;
+      lastCh = c.chapter;
+    }
+    code += `  { name: "${c.name}", chapter: ${c.chapter}, x: ${c.x}, y: ${c.y}, flag: "${c.flag}" },\n`;
+  });
+  code += ']';
+  output.textContent = code;
+  navigator.clipboard?.writeText(code);
+}
+</script>
+</body>
+</html>
